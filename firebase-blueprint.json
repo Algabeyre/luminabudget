@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial transaction record",
+      "type": "object",
+      "properties": {
+        "amount": { "type": "number", "description": "Transaction amount" },
+        "type": { "type": "string", "enum": ["income", "expense"] },
+        "category": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["amount", "type", "category", "description", "date", "userId"]
+    },
+    "Budget": {
+      "title": "Budget",
+      "description": "Spending limit for a category",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "limit": { "type": "number" },
+        "spent": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["category", "limit", "spent", "userId"]
+    }
+  },
+  "firestore": {
+    "transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "User transactions"
+    },
+    "budgets/{budgetId}": {
+      "schema": "Budget",
+      "description": "User budget limits"
+    }
+  }
+}

@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn() && request.auth.token.email_verified == true; }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+
+    // Entity Validations
+    function isValidTransaction(data) {
+      return data.amount is number && data.amount > 0 &&
+             data.type in ['income', 'expense'] &&
+             data.category is string && data.category.size() <= 64 &&
+             data.description is string && data.description.size() <= 200 &&
+             data.date is string && data.date.size() <= 64 &&
+             data.userId == request.auth.uid;
+    }
+
+    function isValidBudget(data) {
+      return data.category is string && data.category.size() <= 64 &&
+             data.limit is number && data.limit >= 0 &&
+             data.spent is number && data.spent >= 0 &&
+             data.userId == request.auth.uid;
+    }
+
+    // Collection Security
+    match /transactions/{transactionId} {
+      allow get: if isOwner(existing().userId) && isValidId(transactionId);
+      allow list: if isOwner(resource.data.userId);
+      allow create: if isVerified() && 
+                      isValidId(transactionId) &&
+                      isValidTransaction(incoming()) &&
+                      incoming().keys().hasAll(['amount', 'type', 'category', 'description', 'date', 'userId']) &&
+                      incoming().keys().size() == 6;
+      allow update: if isVerified() && 
+                      isValidId(transactionId) &&
+                      isOwner(existing().userId) &&
+                      isValidTransaction(incoming()) &&
+                      incoming().userId == existing().userId &&
+                      incoming().diff(existing()).affectedKeys().hasOnly(['amount', 'type', 'category', 'description', 'date']);
+      allow delete: if isOwner(existing().userId) && isValidId(transactionId);
+    }
+
+    match /budgets/{budgetId} {
+      allow get: if isOwner(existing().userId) && isValidId(budgetId);
+      allow list: if isOwner(resource.data.userId);
+      allow create: if isVerified() && 
+                      isValidId(budgetId) &&
+                      isValidBudget(incoming()) &&
+                      incoming().keys().hasAll(['category', 'limit', 'spent', 'userId']) &&
+                      incoming().keys().size() == 4;
+      allow update: if isVerified() && 
+                      isValidId(budgetId) &&
+                      isOwner(existing().userId) &&
+                      isValidBudget(incoming()) &&
+                      incoming().userId == existing().userId &&
+                      (
+                        // Update limit
+                        incoming().diff(existing()).affectedKeys().hasOnly(['limit']) ||
+                        // Update spent (increment/decrement)
+                        incoming().diff(existing()).affectedKeys().hasOnly(['spent']) ||
+                        // Update both
+                        incoming().diff(existing()).affectedKeys().hasOnly(['limit', 'spent'])
+                      );
+      allow delete: if isOwner(existing().userId) && isValidId(budgetId);
+    }
+  }
+}
